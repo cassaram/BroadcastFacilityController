@@ -76,8 +76,6 @@ func (r *HarrisLRCRouter) Start() {
 	go func() {
 		r.sendCommand("~CHANNELS?\\")
 		time.Sleep(100 * time.Millisecond)
-		r.sendCommand("~DEST?Q${COUNT}\\")
-		time.Sleep(100 * time.Millisecond)
 		r.sendCommand("~DEST?Q${NAME,CHANNELS}\\")
 		time.Sleep(100 * time.Millisecond)
 		//r.sendCommand("~DEST?Q${CHANNELS}\\")
@@ -135,13 +133,17 @@ func (r *HarrisLRCRouter) replyListener() {
 			}
 			// Insert into large buffer
 			largeBuffer += string(shortBuffer[:n])
-			largeBuffer := strings.Trim(largeBuffer, "\r\n")
+			largeBuffer = strings.ReplaceAll(largeBuffer, "\r", "")
+			largeBuffer = strings.ReplaceAll(largeBuffer, "\n", "")
 			// Process large buffer
 			for {
+				if len(largeBuffer) == 0 {
+					break
+				}
 				msgStart := strings.Index(largeBuffer, "~")
 				msgEnd := strings.Index(largeBuffer, "\\")
 				if msgEnd < 0 {
-					log.Debug("Harris LRC Router: Buffer size", len(largeBuffer))
+					log.Debug("Harris LRC Router: Buffer size: ", len(largeBuffer), " Contents: ", string(largeBuffer))
 					break
 				}
 				msgStr := largeBuffer[msgStart : msgEnd+1]

@@ -11,7 +11,7 @@ import (
 
 func main() {
 	log.SetOutput(os.Stdout)
-	log.SetLevel(log.DebugLevel)
+	//log.SetLevel(log.DebugLevel)
 
 	cerebrum := harrislrc.HarrisLRCRouter{}
 	cerebrum.Init(harrislrc.HarrisLRCRouterConfig{
