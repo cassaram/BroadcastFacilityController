@@ -21,6 +21,7 @@ func main() {
 	cerebrum.Start()
 	time.Sleep(500 * time.Millisecond)
 	fmt.Println(cerebrum.GetLevels())
-	fmt.Println(cerebrum.GetDestinations())
+	//fmt.Println(cerebrum.GetDestinations())
+	fmt.Println(cerebrum.GetSources())
 	time.Sleep(time.Second)
 }

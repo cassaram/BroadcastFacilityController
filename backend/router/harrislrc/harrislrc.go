@@ -32,6 +32,10 @@ type HarrisLRCRouter struct {
 	DestinationsMutex     sync.Mutex
 	DestinationsName      map[string]int // Stores Name -> ID mapping
 	DestinationsNameMutex sync.Mutex
+	Sources               map[int]router.Source
+	SourcesMutex          sync.Mutex
+	SourcesName           map[string]int // Stores Name -> ID mapping
+	SourcesNameMutex      sync.Mutex
 }
 
 type HarrisLRCRouterConfig struct {
@@ -51,12 +55,14 @@ func (r *HarrisLRCRouter) Init(conf HarrisLRCRouterConfig) {
 	r.conn = nil
 	r.crosspointNotify = make(chan router.Crosspoint)
 	r.stop = make(chan bool)
-	r.replyMessages = make(chan lrcMessage)
+	r.replyMessages = make(chan lrcMessage, 100) // Buffered to add some level of async capabilitiy between listener and handler
 	r.receiverReady = 0
 	r.Levels = make(map[int]router.Level)
 	r.LevelsName = make(map[string]int)
 	r.Destinations = make(map[int]router.Destination)
 	r.DestinationsName = make(map[string]int)
+	r.Sources = make(map[int]router.Source)
+	r.SourcesName = make(map[string]int)
 }
 
 func (r *HarrisLRCRouter) Start() {
@@ -73,12 +79,13 @@ func (r *HarrisLRCRouter) Start() {
 	go r.replyHandler()
 	go r.replyListener()
 
+	// Get initial configs
 	go func() {
 		r.sendCommand("~CHANNELS?\\")
 		time.Sleep(100 * time.Millisecond)
 		r.sendCommand("~DEST?Q${NAME,CHANNELS}\\")
 		time.Sleep(100 * time.Millisecond)
-		//r.sendCommand("~DEST?Q${CHANNELS}\\")
+		r.sendCommand("~SRC?Q${NAME,CHANNELS}\\")
 	}()
 
 }
@@ -219,10 +226,6 @@ func (r *HarrisLRCRouter) replyHandler() {
 					_, arg_name := msg.args["NAME"]
 					_, arg_I := msg.args["I"]
 					_, arg_channels := msg.args["CHANNELS"]
-					_, arg_count := msg.args["COUNT"]
-					if arg_count {
-
-					}
 					if arg_I && arg_name {
 						// Name reports
 						id, err := strconv.Atoi(msg.args["I"].values[0])
@@ -272,7 +275,7 @@ func (r *HarrisLRCRouter) replyHandler() {
 						}
 						if destID < 0 {
 							log.Error("Harris LRC Router: Error parsing destination ID ", msg.args["I"])
-
+							continue
 						}
 						r.DestinationsMutex.Lock()
 						dest, dest_exists := r.Destinations[destID]
@@ -323,6 +326,120 @@ func (r *HarrisLRCRouter) replyHandler() {
 						r.DestinationsMutex.Unlock()
 					}
 				}
+			case "SRC":
+				switch msg.op {
+				case _QUERYRESP:
+					_, arg_name := msg.args["NAME"]
+					_, arg_I := msg.args["I"]
+					_, arg_channels := msg.args["CHANNELS"]
+					if arg_I && arg_name {
+						// Source name report
+						id, err := strconv.Atoi(msg.args["I"].values[0])
+						if err != nil {
+							log.Errorln("Harris LRC Router: Error parsing argument", err.Error())
+							continue
+						}
+						r.SourcesMutex.Lock()
+						src, src_exists := r.Sources[id]
+						r.SourcesMutex.Unlock()
+
+						if !src_exists {
+							src = router.Source{
+								ID:     id,
+								Name:   msg.args["NAME"].values[0],
+								Levels: make([]router.Level, 0),
+							}
+							r.SourcesMutex.Lock()
+							r.Sources[id] = src
+							r.SourcesMutex.Unlock()
+							r.SourcesNameMutex.Lock()
+							r.SourcesName[src.Name] = id
+							r.SourcesNameMutex.Unlock()
+						} else {
+							oldName := src.Name
+							src.Name = msg.args["NAME"].values[0]
+							r.SourcesMutex.Lock()
+							r.Sources[id] = src
+							r.SourcesMutex.Unlock()
+							r.SourcesNameMutex.Lock()
+							delete(r.SourcesName, oldName)
+							r.SourcesName[src.Name] = id
+							r.SourcesNameMutex.Unlock()
+						}
+					}
+					if arg_I && arg_channels {
+						// Channel report
+						srcId := -1
+						switch msg.args["I"].argType {
+						case _NUMERIC:
+							srcIdTemp, err := strconv.Atoi(msg.args["I"].values[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error ", err)
+								continue
+							}
+							srcId = srcIdTemp
+						case _STRING:
+							r.SourcesNameMutex.Lock()
+							srcIdTemp, ok := r.SourcesName[msg.args["I"].values[0]]
+							r.SourcesNameMutex.Unlock()
+							if !ok {
+								log.Errorln("Harris LRC Router: Error parsing message ", msg)
+								continue
+							}
+							srcId = srcIdTemp
+						}
+						if srcId < 0 {
+							log.Errorln("Harris LRC Router: Error parsing message ", msg)
+							continue
+						}
+
+						r.SourcesMutex.Lock()
+						src, ok := r.Sources[srcId]
+						r.SourcesMutex.Unlock()
+						if !ok {
+							log.Errorln("Harris LRC Router: Source does not exist ", srcId)
+						}
+
+						for _, lvlStr := range msg.args["CHANNELS"].values {
+							lvlId := -1
+							switch msg.args["CHANNELS"].argType {
+							case _NUMERIC:
+								lvlIdTemp, err := strconv.Atoi(lvlStr)
+								if err != nil {
+									log.Errorln("Harris LRC Router: Error ", err)
+									continue
+								}
+								lvlId = lvlIdTemp
+							case _STRING:
+								r.LevelsNameMutex.Lock()
+								lvlIdTemp, ok := r.LevelsName[lvlStr]
+								r.LevelsNameMutex.Unlock()
+								if !ok {
+									log.Errorln("Harris LRC Router: Error parsing message ", msg)
+									continue
+								}
+								lvlId = lvlIdTemp
+							}
+							if lvlId < 0 {
+								log.Errorln("Harris LRC Router: Error parsing message ", msg)
+								continue
+							}
+							r.LevelsMutex.Lock()
+							lvl, ok := r.Levels[lvlId]
+							r.LevelsMutex.Unlock()
+							if !ok {
+								log.Errorln("Harris LRC Router: Level does not exist ", lvlId)
+							}
+							src.Levels = append(src.Levels, lvl)
+							slices.SortFunc(src.Levels, func(a router.Level, b router.Level) int {
+								return cmp.Compare(a.ID, b.ID)
+							})
+						}
+						r.SourcesMutex.Lock()
+						r.Sources[srcId] = src
+						r.SourcesMutex.Unlock()
+					}
+				}
 			}
 
 		}
@@ -342,10 +459,19 @@ func (r *HarrisLRCRouter) GetLevels() []router.Level {
 func (r *HarrisLRCRouter) GetDestinations() []router.Destination {
 	r.DestinationsMutex.Lock()
 	dests := maps.Values(r.Destinations)
-	fmt.Println(len(r.Destinations))
 	r.DestinationsMutex.Unlock()
 	slices.SortFunc(dests, func(a router.Destination, b router.Destination) int {
 		return cmp.Compare(a.ID, b.ID)
 	})
 	return dests
+}
+
+func (r *HarrisLRCRouter) GetSources() []router.Source {
+	r.SourcesMutex.Lock()
+	srcs := maps.Values(r.Sources)
+	r.SourcesMutex.Unlock()
+	slices.SortFunc(srcs, func(a router.Source, b router.Source) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
+	return srcs
 }
