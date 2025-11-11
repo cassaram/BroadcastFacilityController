@@ -4,9 +4,9 @@ type Router interface {
 	Init(interface{})
 	Start()
 	Stop()
-	// Returns a channel which crosspoint notifications are written to when routes are changed.
-	// This channel must be cleared by the calling program regardless of if this feature is implemented.
-	GetCrosspointNotifyChannel() chan Crosspoint
+	// Channel that passes any crosspoint changes reported by the router
+	// If implemented, should be buffered to not halt internal processing of the router module
+	SetCrosspointNotifyChannel(chan Crosspoint)
 	GetLevels() []Level
 	GetSources() []Source
 	GetDestinations() []Destination

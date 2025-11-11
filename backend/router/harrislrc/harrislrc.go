@@ -20,7 +20,6 @@ type HarrisLRCRouter struct {
 	Hostname              string
 	Port                  uint16
 	conn                  net.Conn
-	crosspointNotify      chan router.Crosspoint
 	stop                  chan bool
 	replyMessages         chan lrcMessage
 	receiverReady         int
@@ -36,6 +35,9 @@ type HarrisLRCRouter struct {
 	SourcesMutex          sync.Mutex
 	SourcesName           map[string]int // Stores Name -> ID mapping
 	SourcesNameMutex      sync.Mutex
+	Crosspoints           map[int]map[int]router.Crosspoint // Destination -> Level -> Crosspoint
+	CrosspointMutex       sync.Mutex
+	crosspointNotify      chan router.Crosspoint
 }
 
 type HarrisLRCRouterConfig struct {
@@ -53,7 +55,6 @@ func (r *HarrisLRCRouter) Init(conf HarrisLRCRouterConfig) {
 	r.Hostname = conf.Hostname
 	r.Port = uint16(conf.Port)
 	r.conn = nil
-	r.crosspointNotify = make(chan router.Crosspoint)
 	r.stop = make(chan bool)
 	r.replyMessages = make(chan lrcMessage, 100) // Buffered to add some level of async capabilitiy between listener and handler
 	r.receiverReady = 0
@@ -63,6 +64,7 @@ func (r *HarrisLRCRouter) Init(conf HarrisLRCRouterConfig) {
 	r.DestinationsName = make(map[string]int)
 	r.Sources = make(map[int]router.Source)
 	r.SourcesName = make(map[string]int)
+	r.Crosspoints = make(map[int]map[int]router.Crosspoint)
 }
 
 func (r *HarrisLRCRouter) Start() {
@@ -80,14 +82,20 @@ func (r *HarrisLRCRouter) Start() {
 	go r.replyListener()
 
 	// Get initial configs
+	r.getConfig()
+}
+
+func (r *HarrisLRCRouter) getConfig() {
+	log.Infoln("Harris LRC Router: Fetching full configuration")
 	go func() {
 		r.sendCommand("~CHANNELS?\\")
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		r.sendCommand("~DEST?Q${NAME,CHANNELS}\\")
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		r.sendCommand("~SRC?Q${NAME,CHANNELS}\\")
+		time.Sleep(10 * time.Millisecond)
+		r.sendCommand("~XPOINT?\\")
 	}()
-
 }
 
 func (r *HarrisLRCRouter) Stop() {
@@ -98,8 +106,8 @@ func (r *HarrisLRCRouter) Stop() {
 	}
 }
 
-func (r *HarrisLRCRouter) GetCrosspointNotifyChannel() chan router.Crosspoint {
-	return r.crosspointNotify
+func (r *HarrisLRCRouter) SetCrosspointNotifyChannel(c chan router.Crosspoint) {
+	r.crosspointNotify = c
 }
 
 func (r *HarrisLRCRouter) sendCommand(cmd string) error {
@@ -176,6 +184,9 @@ func (r *HarrisLRCRouter) replyHandler() {
 		case msg := <-r.replyMessages:
 			log.Debug("Harris LRC Router: Parsed ", msg)
 			switch msg.msgType {
+			case "DBCHANGE":
+				// Router reconfigured itself. Re-request all sources, destinations, channels, etc.
+				r.getConfig()
 			case "CHANNELS":
 				switch msg.op {
 				case _QUERYRESP:
@@ -256,6 +267,10 @@ func (r *HarrisLRCRouter) replyHandler() {
 							r.DestinationsNameMutex.Lock()
 							r.DestinationsName[dest.Name] = dest.ID
 							r.DestinationsNameMutex.Unlock()
+							// Also setup crosspoints for destination
+							r.CrosspointMutex.Lock()
+							r.Crosspoints[dest.ID] = make(map[int]router.Crosspoint)
+							r.CrosspointMutex.Unlock()
 						}
 					}
 					if arg_I && arg_channels {
@@ -440,8 +455,133 @@ func (r *HarrisLRCRouter) replyHandler() {
 						r.SourcesMutex.Unlock()
 					}
 				}
-			}
+			case "XPOINT":
+				if msg.op == _QUERYRESP || msg.op == _CHANGENOTIFY {
+					// Crosspoint update
+					arg_d, arg_d_ok := msg.args["D"]
+					arg_s, arg_s_ok := msg.args["S"]
+					if arg_d_ok && arg_d.argType != _NUMERIC {
+						// Ignore reports that aren't numeric
+						// Reports are sent twice as numeric and string based
+						// We can ignore the strings to save error-handling and processing time
+						continue
+					}
+					if arg_d_ok && arg_s_ok {
+						// Crosspoint report
+						destID := -1
+						destLvlID := -1
+						srcID := -1
+						srcLvlID := -1
+						followMode := false
 
+						destStrs := strings.Split(arg_d.values[0], ".")
+						if len(destStrs) == 1 {
+							// Follow mode
+							followMode = true
+						} else if len(destStrs) < 2 {
+							log.Errorln("Harris LRC Router: Error parsing message ", msg)
+							continue
+						} else {
+							// Normal breakaway mode
+							var err error
+							destID, err = strconv.Atoi(destStrs[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message", msg)
+								continue
+							}
+							destLvlID, err = strconv.Atoi(destStrs[1])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message", msg)
+								continue
+							}
+						}
+
+						if len(arg_s.values[0]) == 0 {
+							// Channel is in breakaway
+							// There should be other messages that report the individual level changes
+							// We can just ignore this then
+							continue
+						}
+						srcStrs := strings.Split(arg_s.values[0], ".")
+						if len(srcStrs) == 1 && len(destStrs) == 1 {
+							// Follow mode. All destination levels pull from source levels.
+							followMode = true
+						} else if len(srcStrs) < 2 {
+							// Error occured
+							log.Errorln("Harris LRC Router: Error parsing message ", msg)
+							continue
+						} else {
+							// Breakaway mode
+							var err error
+							srcID, err = strconv.Atoi(srcStrs[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message", msg)
+								continue
+							}
+							srcLvlID, err = strconv.Atoi(srcStrs[1])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message", msg)
+								continue
+							}
+						}
+
+						r.CrosspointMutex.Lock()
+						destCrosspoints, ok := r.Crosspoints[destID]
+						r.CrosspointMutex.Unlock()
+						if !ok {
+							destCrosspoints = make(map[int]router.Crosspoint)
+						}
+
+						if followMode {
+							// Route all destination crosspoints to be from single source
+							r.DestinationsMutex.Lock()
+							dest := r.Destinations[destID]
+							r.DestinationsMutex.Unlock()
+							for _, dstlvl := range dest.Levels {
+								lvlCrosspoint, lvlCrosspointok := destCrosspoints[dstlvl.ID]
+								if !lvlCrosspointok {
+									lvlCrosspoint = router.Crosspoint{
+										Destination:      destID,
+										DestinationLevel: dstlvl.ID,
+										Source:           srcID,
+										SourceLevel:      dstlvl.ID,
+										Locked:           false,
+									}
+								} else {
+									lvlCrosspoint.Source = srcID
+									lvlCrosspoint.SourceLevel = dstlvl.ID
+								}
+								destCrosspoints[dstlvl.ID] = lvlCrosspoint
+								if r.crosspointNotify != nil {
+									r.crosspointNotify <- lvlCrosspoint
+								}
+							}
+						} else {
+							// Breakaway mode
+							crosspoint, ok := destCrosspoints[destLvlID]
+							if !ok {
+								crosspoint = router.Crosspoint{
+									Destination:      destID,
+									DestinationLevel: destLvlID,
+									Source:           srcID,
+									SourceLevel:      srcLvlID,
+									Locked:           false,
+								}
+							} else {
+								crosspoint.Source = srcID
+								crosspoint.SourceLevel = srcLvlID
+							}
+							destCrosspoints[destLvlID] = crosspoint
+							if r.crosspointNotify != nil {
+								r.crosspointNotify <- crosspoint
+							}
+						}
+						r.CrosspointMutex.Lock()
+						r.Crosspoints[destID] = destCrosspoints
+						r.CrosspointMutex.Unlock()
+					}
+				}
+			}
 		}
 	}
 }
@@ -474,4 +614,22 @@ func (r *HarrisLRCRouter) GetSources() []router.Source {
 		return cmp.Compare(a.ID, b.ID)
 	})
 	return srcs
+}
+
+func (r *HarrisLRCRouter) GetCrosspoints() []router.Crosspoint {
+	crosspoints := make([]router.Crosspoint, 0)
+	r.CrosspointMutex.Lock()
+	for _, destCrosspoint := range r.Crosspoints {
+		destXpntsSlice := maps.Values(destCrosspoint)
+		crosspoints = append(crosspoints, destXpntsSlice...)
+	}
+	r.CrosspointMutex.Unlock()
+	slices.SortFunc(crosspoints, func(a router.Crosspoint, b router.Crosspoint) int {
+		destCmp := cmp.Compare(a.Destination, b.Destination)
+		if destCmp != 0 {
+			return destCmp
+		}
+		return cmp.Compare(a.DestinationLevel, b.DestinationLevel)
+	})
+	return crosspoints
 }

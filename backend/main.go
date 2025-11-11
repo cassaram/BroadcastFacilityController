@@ -19,9 +19,11 @@ func main() {
 		Port:     52116,
 	})
 	cerebrum.Start()
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(5000 * time.Millisecond)
 	fmt.Println(cerebrum.GetLevels())
 	//fmt.Println(cerebrum.GetDestinations())
-	fmt.Println(cerebrum.GetSources())
-	time.Sleep(time.Second)
+	//fmt.Println(cerebrum.GetSources())
+	fmt.Println(cerebrum.GetCrosspoints())
+	//time.Sleep(time.Second)
+	//<-make(chan bool)
 }
