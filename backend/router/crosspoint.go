@@ -1,9 +1,9 @@
 package router
 
 type Crosspoint struct {
-	Source           int
-	SourceLevel      int
 	Destination      int
 	DestinationLevel int
+	Source           int
+	SourceLevel      int
 	Locked           bool
 }

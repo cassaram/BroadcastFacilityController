@@ -11,7 +11,7 @@ type Router interface {
 	GetSources() []Source
 	GetDestinations() []Destination
 	GetCrosspoints() []Crosspoint
-	SetCrosspoint(Destination, Level, Source, Level) error
-	LockDestination(Destination, Level) error
-	UnlockDestination(Destination, Level) error
+	SetCrosspoint(destID int, destLevelID int, srcID int, srcLevelID int) error
+	LockDestination(dest int, level int) error
+	UnlockDestination(dest int, level int) error
 }

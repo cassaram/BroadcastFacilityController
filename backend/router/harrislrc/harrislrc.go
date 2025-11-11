@@ -116,6 +116,7 @@ func (r *HarrisLRCRouter) sendCommand(cmd string) error {
 	for r.receiverReady < 2 {
 		time.Sleep(1000)
 	}
+	log.Debugln("Harris LRC Router: Sent ", cmd)
 	cmdBytes := []byte(cmd)
 	_, err := r.conn.Write(cmdBytes)
 	if err != nil {
@@ -665,4 +666,13 @@ func (r *HarrisLRCRouter) GetCrosspoints() []router.Crosspoint {
 		return cmp.Compare(a.DestinationLevel, b.DestinationLevel)
 	})
 	return crosspoints
+}
+
+func (r *HarrisLRCRouter) SetCrosspoint(destID int, destLevelID int, srcID int, srcLevelID int) error {
+	cmd := fmt.Sprintf("~XPOINT:D#{%d.%d};S#{%d.%d}\\", destID, destLevelID, srcID, srcLevelID)
+	// Use -1 level ID to mean a follow source
+	if destLevelID == -1 || srcLevelID == -1 {
+		cmd = fmt.Sprintf("~XPOINT:D#{%d};S#{%d}\\", destID, srcID)
+	}
+	return r.sendCommand(cmd)
 }
