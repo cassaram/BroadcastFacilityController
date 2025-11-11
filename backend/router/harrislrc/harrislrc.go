@@ -719,10 +719,18 @@ func (r *HarrisLRCRouter) SetCrosspoint(destID int, destLevelID int, srcID int, 
 
 func (r *HarrisLRCRouter) LockDestination(destID int, destLevelID int) error {
 	cmd := fmt.Sprintf("~LOCK:D#{%d.%d};V${ON}\\", destID, destLevelID)
+	// Use a -1 level ID to mean all levels
+	if destLevelID == -1 {
+		cmd = fmt.Sprintf("~LOCK:D#{%d};V${ON}\\", destID)
+	}
 	return r.sendCommand(cmd)
 }
 
 func (r *HarrisLRCRouter) UnlockDestination(destID int, destLevelID int) error {
 	cmd := fmt.Sprintf("~LOCK:D#{%d.%d};V${OFF}\\", destID, destLevelID)
+	// Use a -1 level ID to mean all levels
+	if destLevelID == -1 {
+		cmd = fmt.Sprintf("~LOCK:D#{%d};V${OFF}\\", destID)
+	}
 	return r.sendCommand(cmd)
 }
