@@ -95,8 +95,8 @@ func (r *HarrisLRCRouter) getConfig() {
 		r.sendCommand("~SRC?Q${NAME,CHANNELS}\\")
 		time.Sleep(10 * time.Millisecond)
 		r.sendCommand("~XPOINT?\\")
-		time.Sleep(10 * time.Millisecond)
-		r.sendCommand("~LOCK?\\")
+		//time.Sleep(10 * time.Millisecond)
+		//r.sendCommand("~LOCK?\\")
 	}()
 }
 
@@ -330,6 +330,12 @@ func (r *HarrisLRCRouter) replyHandler() {
 							}
 							if !foundlvl {
 								dest.Levels = append(dest.Levels, lvlID)
+							}
+							// get lock per destination level
+							cmd := fmt.Sprintf("~LOCK?D#{%d.%d}\\", destID, lvlID)
+							err := r.sendCommand(cmd)
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error ", err)
 							}
 						}
 						slices.SortFunc(dest.Levels, func(a int, b int) int {
@@ -581,38 +587,72 @@ func (r *HarrisLRCRouter) replyHandler() {
 					arg_v, arg_v_ok := msg.args["V"]
 
 					if arg_d_ok && arg_v_ok {
+						// Check if destination includes level
+						dstStrs := strings.Split(arg_d.values[0], ".")
+						if len(dstStrs) < 2 {
+							// Does not include level
+							continue
+						}
 						destID := -1
+						destLvlID := -1
 						switch arg_d.argType {
 						case _NUMERIC:
 							var err error
-							destID, err = strconv.Atoi(arg_d.values[0])
+							destID, err = strconv.Atoi(dstStrs[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message ", msg, err)
+								continue
+							}
+							destLvlID, err = strconv.Atoi(dstStrs[1])
 							if err != nil {
 								log.Errorln("Harris LRC Router: Error parsing message ", msg, err)
 								continue
 							}
 						case _STRING:
-							r.DestinationsNameMutex.Lock()
+							// Ignore string responses
+							//continue
 							var destIDOkay bool
-							destID, destIDOkay = r.DestinationsName[arg_d.values[0]]
+							r.DestinationsNameMutex.Lock()
+							destID, destIDOkay = r.DestinationsName[dstStrs[0]]
 							r.DestinationsNameMutex.Unlock()
 							if !destIDOkay {
 								log.Errorln("Harris LRC Router: Error parsing message ", msg)
 								continue
 							}
+							var destLvlID_ok bool
+							r.LevelsNameMutex.Lock()
+							destLvlID, destLvlID_ok = r.LevelsName[dstStrs[1]]
+							r.LevelsNameMutex.Unlock()
+							if !destLvlID_ok {
+								log.Errorln("Harris LRC Router: Error parsing message ", msg)
+								continue
+							}
 						}
-						locked := arg_v.values[0] == "OFF"
+						locked := arg_v.values[0] != "OFF"
 
 						// Update crosspoints for destination
-						r.CrosspointMutex.Lock()
-						destCrosspoints := r.Crosspoints[destID]
-						r.CrosspointMutex.Unlock()
-						for lvlID, crosspoint := range destCrosspoints {
+						if destID != -1 && destLvlID != -1 {
+							r.CrosspointMutex.Lock()
+							crosspoint, crosspoint_ok := r.Crosspoints[destID][destLvlID]
+							if !crosspoint_ok {
+								crosspoint.Destination = destID
+								crosspoint.DestinationLevel = destLvlID
+							}
 							crosspoint.Locked = locked
-							destCrosspoints[lvlID] = crosspoint
+							r.Crosspoints[destID][destLvlID] = crosspoint
+							r.CrosspointMutex.Unlock()
+						} else if destID != -1 && destLvlID == -1 {
+							r.CrosspointMutex.Lock()
+							destCrosspoints := r.Crosspoints[destID]
+							r.CrosspointMutex.Unlock()
+							for lvlID, crosspoint := range destCrosspoints {
+								crosspoint.Locked = locked
+								destCrosspoints[lvlID] = crosspoint
+							}
+							r.CrosspointMutex.Lock()
+							r.Crosspoints[destID] = destCrosspoints
+							r.CrosspointMutex.Unlock()
 						}
-						r.CrosspointMutex.Lock()
-						r.Crosspoints[destID] = destCrosspoints
-						r.CrosspointMutex.Unlock()
 					}
 				}
 			}
@@ -674,5 +714,15 @@ func (r *HarrisLRCRouter) SetCrosspoint(destID int, destLevelID int, srcID int, 
 	if destLevelID == -1 || srcLevelID == -1 {
 		cmd = fmt.Sprintf("~XPOINT:D#{%d};S#{%d}\\", destID, srcID)
 	}
+	return r.sendCommand(cmd)
+}
+
+func (r *HarrisLRCRouter) LockDestination(destID int, destLevelID int) error {
+	cmd := fmt.Sprintf("~LOCK:D#{%d};V${ON}\\", destID)
+	return r.sendCommand(cmd)
+}
+
+func (r *HarrisLRCRouter) UnlockDestination(destID int, destLevelID int) error {
+	cmd := fmt.Sprintf("~LOCK:D#{%d};V${OFF}\\", destID)
 	return r.sendCommand(cmd)
 }

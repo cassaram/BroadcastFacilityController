@@ -12,7 +12,7 @@ import (
 
 func main() {
 	log.SetOutput(os.Stdout)
-	log.SetLevel(log.DebugLevel)
+	//log.SetLevel(log.DebugLevel)
 
 	cerebrum := harrislrc.HarrisLRCRouter{}
 	cerebrum.Init(harrislrc.HarrisLRCRouterConfig{
@@ -31,6 +31,7 @@ func main() {
 	xpntsJson, _ := json.MarshalIndent(cerebrum.GetCrosspoints(), "", "    ")
 	os.WriteFile("crosspoints.json", xpntsJson, 0744)
 	//cerebrum.SetCrosspoint(88, -1, 13, -1)
+	cerebrum.LockDestination(88, 1)
 	//fmt.Println(cerebrum.GetCrosspoints())
 	time.Sleep(time.Second)
 	//<-make(chan bool)
