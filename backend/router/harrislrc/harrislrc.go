@@ -301,7 +301,7 @@ func (r *HarrisLRCRouter) replyHandler() {
 							dest = router.Destination{
 								ID:     destID,
 								Name:   "",
-								Levels: make([]router.Level, 0),
+								Levels: make([]int, 0),
 							}
 						}
 
@@ -319,23 +319,20 @@ func (r *HarrisLRCRouter) replyHandler() {
 								lvlID = r.LevelsName[lvlstr]
 								r.LevelsNameMutex.Unlock()
 							}
-							r.LevelsMutex.Lock()
-							lvl := r.Levels[lvlID]
-							r.LevelsMutex.Unlock()
 							foundlvl := false
 							for _, testlvl := range dest.Levels {
-								if testlvl.ID == lvl.ID {
+								if testlvl == lvlID {
 									// do nothing
 									foundlvl = true
 									break
 								}
 							}
 							if !foundlvl {
-								dest.Levels = append(dest.Levels, lvl)
+								dest.Levels = append(dest.Levels, lvlID)
 							}
 						}
-						slices.SortFunc(dest.Levels, func(a router.Level, b router.Level) int {
-							return cmp.Compare(a.ID, b.ID)
+						slices.SortFunc(dest.Levels, func(a int, b int) int {
+							return cmp.Compare(a, b)
 						})
 
 						r.DestinationsMutex.Lock()
@@ -364,7 +361,7 @@ func (r *HarrisLRCRouter) replyHandler() {
 							src = router.Source{
 								ID:     id,
 								Name:   msg.args["NAME"].values[0],
-								Levels: make([]router.Level, 0),
+								Levels: make([]int, 0),
 							}
 							r.SourcesMutex.Lock()
 							r.Sources[id] = src
@@ -441,15 +438,9 @@ func (r *HarrisLRCRouter) replyHandler() {
 								log.Errorln("Harris LRC Router: Error parsing message ", msg)
 								continue
 							}
-							r.LevelsMutex.Lock()
-							lvl, ok := r.Levels[lvlId]
-							r.LevelsMutex.Unlock()
-							if !ok {
-								log.Errorln("Harris LRC Router: Level does not exist ", lvlId)
-							}
-							src.Levels = append(src.Levels, lvl)
-							slices.SortFunc(src.Levels, func(a router.Level, b router.Level) int {
-								return cmp.Compare(a.ID, b.ID)
+							src.Levels = append(src.Levels, lvlId)
+							slices.SortFunc(src.Levels, func(a int, b int) int {
+								return cmp.Compare(a, b)
 							})
 						}
 						r.SourcesMutex.Lock()
@@ -539,21 +530,21 @@ func (r *HarrisLRCRouter) replyHandler() {
 							r.DestinationsMutex.Lock()
 							dest := r.Destinations[destID]
 							r.DestinationsMutex.Unlock()
-							for _, dstlvl := range dest.Levels {
-								lvlCrosspoint, lvlCrosspointok := destCrosspoints[dstlvl.ID]
+							for _, followDestLevelID := range dest.Levels {
+								lvlCrosspoint, lvlCrosspointok := destCrosspoints[followDestLevelID]
 								if !lvlCrosspointok {
 									lvlCrosspoint = router.Crosspoint{
 										Destination:      destID,
-										DestinationLevel: dstlvl.ID,
+										DestinationLevel: followDestLevelID,
 										Source:           srcID,
-										SourceLevel:      dstlvl.ID,
+										SourceLevel:      followDestLevelID,
 										Locked:           false,
 									}
 								} else {
 									lvlCrosspoint.Source = srcID
-									lvlCrosspoint.SourceLevel = dstlvl.ID
+									lvlCrosspoint.SourceLevel = followDestLevelID
 								}
-								destCrosspoints[dstlvl.ID] = lvlCrosspoint
+								destCrosspoints[followDestLevelID] = lvlCrosspoint
 								if r.crosspointNotify != nil {
 									r.crosspointNotify <- lvlCrosspoint
 								}

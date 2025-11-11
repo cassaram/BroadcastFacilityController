@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -22,8 +23,10 @@ func main() {
 	time.Sleep(5000 * time.Millisecond)
 	fmt.Println(cerebrum.GetLevels())
 	//fmt.Println(cerebrum.GetDestinations())
-	//fmt.Println(cerebrum.GetSources())
-	fmt.Println(cerebrum.GetCrosspoints())
+	srcsJson, _ := json.MarshalIndent(cerebrum.GetSources(), "", "    ")
+	os.WriteFile("sources.json", srcsJson, 0744)
+	fmt.Println(cerebrum.GetSources())
+	//fmt.Println(cerebrum.GetCrosspoints())
 	//time.Sleep(time.Second)
 	//<-make(chan bool)
 }
