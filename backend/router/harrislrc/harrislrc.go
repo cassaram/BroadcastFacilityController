@@ -95,6 +95,8 @@ func (r *HarrisLRCRouter) getConfig() {
 		r.sendCommand("~SRC?Q${NAME,CHANNELS}\\")
 		time.Sleep(10 * time.Millisecond)
 		r.sendCommand("~XPOINT?\\")
+		time.Sleep(10 * time.Millisecond)
+		r.sendCommand("~LOCK?\\")
 	}()
 }
 
@@ -575,6 +577,46 @@ func (r *HarrisLRCRouter) replyHandler() {
 							if r.crosspointNotify != nil {
 								r.crosspointNotify <- crosspoint
 							}
+						}
+						r.CrosspointMutex.Lock()
+						r.Crosspoints[destID] = destCrosspoints
+						r.CrosspointMutex.Unlock()
+					}
+				}
+			case "LOCK":
+				if msg.op == _CHANGENOTIFY || msg.op == _QUERYRESP {
+					arg_d, arg_d_ok := msg.args["D"]
+					arg_v, arg_v_ok := msg.args["V"]
+
+					if arg_d_ok && arg_v_ok {
+						destID := -1
+						switch arg_d.argType {
+						case _NUMERIC:
+							var err error
+							destID, err = strconv.Atoi(arg_d.values[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message ", msg, err)
+								continue
+							}
+						case _STRING:
+							r.DestinationsNameMutex.Lock()
+							var destIDOkay bool
+							destID, destIDOkay = r.DestinationsName[arg_d.values[0]]
+							r.DestinationsNameMutex.Unlock()
+							if !destIDOkay {
+								log.Errorln("Harris LRC Router: Error parsing message ", msg)
+								continue
+							}
+						}
+						locked := arg_v.values[0] == "OFF"
+
+						// Update crosspoints for destination
+						r.CrosspointMutex.Lock()
+						destCrosspoints := r.Crosspoints[destID]
+						r.CrosspointMutex.Unlock()
+						for lvlID, crosspoint := range destCrosspoints {
+							crosspoint.Locked = locked
+							destCrosspoints[lvlID] = crosspoint
 						}
 						r.CrosspointMutex.Lock()
 						r.Crosspoints[destID] = destCrosspoints
