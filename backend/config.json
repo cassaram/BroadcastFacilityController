@@ -1,0 +1,15 @@
+{
+    "log_level": "info",
+    "routers": [
+        {
+            "id": 1,
+            "display_name": "Cerebrum",
+            "short_name": "cerebrum",
+            "type": "HarrisLRC",
+            "config": {
+                "hostname": "10.10.60.10",
+                "port": "52116"
+            }
+        }
+    ]
+}

@@ -1,7 +1,7 @@
 package router
 
 type Router interface {
-	Init(interface{})
+	Init(map[string]interface{})
 	Start()
 	Stop()
 	// Channel that passes any crosspoint changes reported by the router

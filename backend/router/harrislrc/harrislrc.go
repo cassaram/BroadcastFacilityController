@@ -40,20 +40,26 @@ type HarrisLRCRouter struct {
 	crosspointNotify      chan router.Crosspoint
 }
 
-type HarrisLRCRouterConfig struct {
-	Hostname string
-	Port     int
-}
-
-func (r *HarrisLRCRouter) Init(conf HarrisLRCRouterConfig) {
+func (r *HarrisLRCRouter) Init(conf map[string]interface{}) {
 	// Error handling
-	if conf.Port < 0 || conf.Port > 0xFFFF {
-		log.Error(fmt.Sprintf("Harris LRC Router: Port (%v) out of range", conf.Port))
+	hostname, hostname_ok := conf["hostname"].(string)
+	portstr, portstr_ok := conf["port"].(string)
+	if !hostname_ok || !portstr_ok {
+		log.Errorln("Harris LRC Router: Bad config given: ", conf)
+		return
+	}
+	port, err := strconv.Atoi(portstr)
+	if err != nil {
+		log.Errorln("Harris LRC Router: Bad port given ", portstr, err)
+		return
+	}
+	if port < 0 || port > 0xFFFF {
+		log.Error(fmt.Sprintf("Harris LRC Router: Port (%v) out of range", port))
 		return
 	}
 
-	r.Hostname = conf.Hostname
-	r.Port = uint16(conf.Port)
+	r.Hostname = hostname
+	r.Port = uint16(port)
 	r.conn = nil
 	r.stop = make(chan bool)
 	r.replyMessages = make(chan lrcMessage, 100) // Buffered to add some level of async capabilitiy between listener and handler
@@ -97,6 +103,8 @@ func (r *HarrisLRCRouter) getConfig() {
 		r.sendCommand("~XPOINT?\\")
 		//time.Sleep(10 * time.Millisecond)
 		//r.sendCommand("~LOCK?\\")
+		time.Sleep(10 * time.Second)
+		log.Infof("Harris LRC Router: Found %d levels, %d sources, %d destinations", len(r.Levels), len(r.Sources), len(r.Destinations))
 	}()
 }
 
