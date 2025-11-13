@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"strings"
 
@@ -45,6 +46,9 @@ func main() {
 		log.SetLevel(log.PanicLevel)
 	}
 
+	// Handle HTTP Server
+	go HandleHTTP()
+
 	// Handle Routers
 	for _, rtrCfg := range configFile.Routers {
 		switch strings.ToLower(rtrCfg.Type) {
@@ -64,4 +68,14 @@ func main() {
 
 	// Run forever
 	<-make(chan bool)
+}
+
+func HandleHTTP() {
+	rootMux := http.NewServeMux()
+	api := NewAPIHandler()
+	apiMux := api.GetServeMux()
+	rootMux.Handle("/api/", http.StripPrefix("/api", apiMux))
+
+	go func() { log.Fatal(http.ListenAndServe(":80", rootMux)) }()
+	go func() { log.Fatal(http.ListenAndServeTLS(":443", "server.crt", "server.key", rootMux)) }()
 }
