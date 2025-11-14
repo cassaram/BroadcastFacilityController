@@ -1,0 +1,16 @@
+<mat-toolbar class="routertable-toolbar">
+    <button matIconButton [matMenuTriggerFor]="menu_rtrSelect">
+        <mat-icon>more_vert</mat-icon>
+    </button>
+    <mat-menu #menu_rtrSelect="matMenu">
+        @for (router of routers; track router.id) {
+            <button mat-menu-item [disabled]="router.id == selectedRouter.id" (click)="selectRouter(router)">
+                {{ router.display_name}}
+            </button>
+        }
+    </mat-menu>
+    <span>{{selectedRouter.display_name}}</span>
+</mat-toolbar>
+<hot-table themeName="ht-theme-main" [data]="hot_data" [settings]="gridSettings" />
+
+

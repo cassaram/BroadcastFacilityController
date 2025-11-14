@@ -10,6 +10,16 @@
                 "hostname": "10.10.60.10",
                 "port": "52116"
             }
+        },
+        {
+            "id": 5,
+            "display_name": "Cerebrum-2",
+            "short_name": "cerebrum-2",
+            "type": "HarrisLRC",
+            "config": {
+                "hostname": "10.10.60.10",
+                "port": "52116"
+            }
         }
     ]
 }

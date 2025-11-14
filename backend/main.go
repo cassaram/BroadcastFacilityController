@@ -13,6 +13,7 @@ import (
 )
 
 var Routers map[int]router.Router
+var ConfigFile config.ConfigFile
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -21,15 +22,14 @@ func main() {
 	Routers = make(map[int]router.Router)
 
 	// Load config file
-	var configFile config.ConfigFile
 	configFileBytes, err := os.ReadFile("config.json")
 	if err != nil {
 		log.Fatal(err)
 	}
-	json.Unmarshal(configFileBytes, &configFile)
+	json.Unmarshal(configFileBytes, &ConfigFile)
 
 	// Handle logging
-	switch strings.ToLower(configFile.LogLevel) {
+	switch strings.ToLower(ConfigFile.LogLevel) {
 	case "trace":
 		log.SetLevel(log.TraceLevel)
 	case "debug":
@@ -50,7 +50,7 @@ func main() {
 	go HandleHTTP()
 
 	// Handle Routers
-	for _, rtrCfg := range configFile.Routers {
+	for _, rtrCfg := range ConfigFile.Routers {
 		switch strings.ToLower(rtrCfg.Type) {
 		case "harrislrc":
 			rtr := harrislrc.HarrisLRCRouter{}
@@ -76,6 +76,19 @@ func HandleHTTP() {
 	apiMux := api.GetServeMux()
 	rootMux.Handle("/api/", http.StripPrefix("/api", apiMux))
 
-	go func() { log.Fatal(http.ListenAndServe(":80", rootMux)) }()
-	go func() { log.Fatal(http.ListenAndServeTLS(":443", "server.crt", "server.key", rootMux)) }()
+	go func() {
+		log.Fatal(http.ListenAndServe(":80", httpMiddlewareCors(rootMux)))
+	}()
+	go func() {
+		log.Fatal(http.ListenAndServeTLS(":443", "server.crt", "server.key", httpMiddlewareCors(rootMux)))
+	}()
+}
+
+func httpMiddlewareCors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		next.ServeHTTP(w, r)
+	})
 }

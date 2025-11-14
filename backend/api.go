@@ -7,6 +7,12 @@ import (
 	"strconv"
 )
 
+type APIV1Router struct {
+	ID          int    `json:"id"`
+	DisplayName string `json:"display_name"`
+	ShortName   string `json:"short_name"`
+}
+
 type APIHandler struct {
 }
 
@@ -18,6 +24,7 @@ func NewAPIHandler() *APIHandler {
 func (a *APIHandler) GetServeMux() *http.ServeMux {
 	// API V1
 	muxV1 := http.NewServeMux()
+	muxV1.HandleFunc("GET /routers", APIV1HandleRouters)
 	muxV1.HandleFunc("GET /routers/{router_id}/crosspoints", APIV1HandleCrosspoints)
 	muxV1.HandleFunc("GET /routers/{router_id}/destinations", APIV1HandleDestinations)
 	muxV1.HandleFunc("GET /routers/{router_id}/levels", APIV1HandleLevels)
@@ -28,6 +35,25 @@ func (a *APIHandler) GetServeMux() *http.ServeMux {
 	muxAPI.Handle("/v1/", http.StripPrefix("/v1", muxV1))
 
 	return muxAPI
+}
+
+func APIV1HandleRouters(w http.ResponseWriter, r *http.Request) {
+	rtrs := make([]APIV1Router, 0)
+	for _, rtrCfg := range ConfigFile.Routers {
+		//rtr := Routers[rtrCfg.ID]
+		rtrs = append(rtrs, APIV1Router{
+			ID:          rtrCfg.ID,
+			DisplayName: rtrCfg.DisplayName,
+			ShortName:   rtrCfg.ShortName,
+		})
+	}
+	rtrsBody, err := json.Marshal(rtrs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(rtrsBody)
 }
 
 func APIV1HandleDestinations(w http.ResponseWriter, r *http.Request) {
