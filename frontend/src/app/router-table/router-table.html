@@ -1,16 +1,22 @@
-<mat-toolbar class="routertable-toolbar">
-    <button matIconButton [matMenuTriggerFor]="menu_rtrSelect">
-        <mat-icon>more_vert</mat-icon>
-    </button>
-    <mat-menu #menu_rtrSelect="matMenu">
-        @for (router of routers; track router.id) {
-            <button mat-menu-item [disabled]="router.id == selectedRouter.id" (click)="selectRouter(router)">
-                {{ router.display_name}}
+<div style="display: flex; height: 100%; width: 100%; flex-direction: column;">
+    <div style="order: 1;">
+        <mat-toolbar class="routertable-toolbar">
+            <button matIconButton [matMenuTriggerFor]="menu_rtrSelect">
+                <mat-icon>more_vert</mat-icon>
             </button>
-        }
-    </mat-menu>
-    <span>{{selectedRouter.display_name}}</span>
-</mat-toolbar>
-<hot-table themeName="ht-theme-main" [data]="hot_data" [settings]="gridSettings" />
+            <mat-menu #menu_rtrSelect="matMenu">
+                @for (router of routers; track router.id) {
+                    <button mat-menu-item [disabled]="router.id == selectedRouter.id" (click)="selectRouter(router)">
+                        {{ router.display_name}}
+                    </button>
+                }
+            </mat-menu>
+            <span>{{selectedRouter.display_name}}</span>
+        </mat-toolbar>
+    </div>
+    <div style="order: 2; height: 100%; overflow:auto">
+        <hot-table style="height: 100%;" themeName="ht-theme-main-dark-auto" [data]="hot_data" [settings]="gridSettings" />
+    </div>
+</div>
 
 

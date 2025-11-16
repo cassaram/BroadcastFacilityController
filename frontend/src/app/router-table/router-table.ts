@@ -1,4 +1,4 @@
-import { Component, ViewChild } from '@angular/core';
+import { ChangeDetectorRef, Component, ViewChild } from '@angular/core';
 import { BackendService } from '../backendapi.service';
 import { Router } from '../models/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -6,6 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { GridSettings, HotTableComponent, HotTableModule } from '@handsontable/angular-wrapper';
+import Handsontable from 'handsontable';
 
 @Component({
   selector: 'app-router-table',
@@ -25,31 +26,58 @@ export class RouterTable {
    ["2019", 10, 11, 12, 13],
    ["2020", 20, 11, 14, 13],
    ["2021", 30, 15, 12, 13],
+   ["2019", 10, 11, 12, 13],
+   ["2020", 20, 11, 14, 13],
+   ["2021", 30, 15, 12, 13],
+   ["2019", 10, 11, 12, 13],
+   ["2020", 20, 11, 14, 13],
+   ["2021", 30, 15, 12, 13],
+   ["2019", 10, 11, 12, 13],
+   ["2020", 20, 11, 14, 13],
+   ["2021", 30, 15, 12, 13],
+   ["2019", 10, 11, 12, 13],
+   ["2020", 20, 11, 14, 13],
+   ["2021", 30, 15, 12, 13],
+   ["2019", 10, 11, 12, 13],
+   ["2020", 20, 11, 14, 13],
+   ["2021", 30, 15, 12, 13],
  ];
    
 
   readonly gridSettings = <GridSettings>{
-    rowHeaders: true,
+    rowHeaders: false,
     colHeaders: true,
-    width: "auto",
-    height: "auto",
+    width: "100%",
+    //height: "100%",
     autoWrapRow: false,
     autoWrapCol: false,
   };
 
   constructor(
-    private backendService: BackendService
+    private backendService: BackendService,
+    private changeDetectorRef: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
-    this.backendService.getRouters().subscribe(routers => this.routers = routers);
+    
+    
+    this.backendService.getRouters().subscribe(routers => this.updateRouters(routers));
+  }
+
+  updateRouters(routers: Router[]): void {
+    this.routers = routers;
     console.log(this.routers);
+    this.changeDetectorRef.detectChanges();
     if (this.routers.length > 0) {
-      this.selectedRouter = this.routers[0]
+      this.selectRouter(routers[0])
     }
   }
   
   selectRouter(rtr: Router): void {
+    this.hotTable?.hotInstance?.refreshDimensions();
+    console.log(this.hotTable?.hotInstance?.getTableHeight());
+    //console.log(this.hotTable?.hotInstance?.getTableHeight());
     this.selectedRouter = rtr;
+    this.changeDetectorRef.detectChanges();
   }
 }

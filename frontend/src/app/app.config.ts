@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
 import { provideClientHydration, withEventReplay } from '@angular/platform-browser';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withFetch } from '@angular/common/http';
 
 import {
   HOT_GLOBAL_CONFIG,
@@ -13,9 +13,9 @@ import {
 
 const globalHotConfig: HotGlobalConfig = {
   license: NON_COMMERCIAL_LICENSE,
-  //layoutDirection: "ltr",
-  //language: "en-US",
-  themeName: "ht-theme-main"
+  layoutDirection: "ltr",
+  language: "en-US",
+  themeName: "ht-theme-main-dark-auto"
 };
 
 export const appConfig: ApplicationConfig = {
@@ -23,7 +23,7 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
     provideRouter(routes), provideClientHydration(withEventReplay()),
-    provideHttpClient(),
+    provideHttpClient(withFetch()),
     {provide: HOT_GLOBAL_CONFIG, useValue: globalHotConfig}
   ]
 };
