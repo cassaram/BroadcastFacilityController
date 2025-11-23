@@ -39,3 +39,11 @@ body {
 
 html, body { height: 100%; }
 body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+
+.density-1 {
+    @include mat.all-component-densities(-1);
+}
+
+.density-2 {
+    @include mat.all-component-densities(-2);
+}

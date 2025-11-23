@@ -1,22 +1,32 @@
-<div style="display: flex; height: 100%; width: 100%; flex-direction: column;">
-    <div style="order: 1;">
+<div style="display: flex; height: 100%; width: 100%; flex-direction: column">
+    <div style="order: 1">
         <mat-toolbar class="routertable-toolbar">
             <button matIconButton [matMenuTriggerFor]="menu_rtrSelect">
                 <mat-icon>more_vert</mat-icon>
             </button>
             <mat-menu #menu_rtrSelect="matMenu">
                 @for (router of routers; track router.id) {
-                    <button mat-menu-item [disabled]="router.id == selectedRouter.id" (click)="selectRouter(router)">
-                        {{ router.display_name}}
-                    </button>
+                <button mat-menu-item [disabled]="router.id == selectedRouter.id" (click)="selectRouter(router)">
+                    {{ router.display_name }}
+                </button>
                 }
             </mat-menu>
-            <span>{{selectedRouter.display_name}}</span>
+            <span>{{ selectedRouter.display_name }}</span>
+            <mat-form-field subscriptSizing="dynamic" class="density-1" style="padding-left: 10px">
+                <mat-label>Destination Filter</mat-label>
+                <input matInput type="text" [(ngModel)]="filterValue" [formControl]="filterFieldControl" />
+                @if (filterValue) {
+                <button matSuffix matIconButton aria-label="Clear" (click)="filterValue = ''">
+                    <mat-icon>close</mat-icon>
+                </button>
+                }
+            </mat-form-field>
+            <span class="routertable-toolbar-spacer"></span>
+            <button matButton="filled" (click)="take()">Take</button>
         </mat-toolbar>
     </div>
-    <div style="order: 2; height: 100%; overflow:auto">
-        <hot-table style="height: 100%;" themeName="ht-theme-main-dark-auto" [data]="hot_data" [settings]="gridSettings" />
+    <div style="order: 2; height: 100%; overflow: auto">
+        <hot-table style="height: 100%; width: 100%" themeName="ht-theme-main-dark-auto" [data]="hot_data"
+            [settings]="gridSettings" />
     </div>
 </div>
-
-

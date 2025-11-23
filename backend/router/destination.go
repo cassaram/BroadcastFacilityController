@@ -1,7 +1,7 @@
 package router
 
 type Destination struct {
-	ID     int
-	Name   string
-	Levels []int
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Levels []int  `json:"levels"`
 }

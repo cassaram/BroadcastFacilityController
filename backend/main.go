@@ -13,13 +13,14 @@ import (
 )
 
 var Routers map[int]router.Router
+var RouterCrosspointNotifcationChannels map[int]chan router.Crosspoint
 var ConfigFile config.ConfigFile
 
 func main() {
 	log.SetOutput(os.Stdout)
-	//log.SetLevel(log.DebugLevel)
 
 	Routers = make(map[int]router.Router)
+	RouterCrosspointNotifcationChannels = make(map[int]chan router.Crosspoint)
 
 	// Load config file
 	configFileBytes, err := os.ReadFile("config.json")
@@ -59,6 +60,8 @@ func main() {
 		default:
 			log.Fatal("Invalid router type: ", rtrCfg.Type)
 		}
+		RouterCrosspointNotifcationChannels[rtrCfg.ID] = make(chan router.Crosspoint, 32)
+		Routers[rtrCfg.ID].SetCrosspointNotifyChannel(RouterCrosspointNotifcationChannels[rtrCfg.ID])
 	}
 
 	// Start Routers
@@ -87,8 +90,12 @@ func HandleHTTP() {
 func httpMiddlewareCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		if r.Method == "OPTIONS" {
+			// Handle CORS Preflight
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }

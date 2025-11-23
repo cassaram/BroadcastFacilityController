@@ -97,14 +97,14 @@ func (r *HarrisLRCRouter) getConfig() {
 		r.sendCommand("~CHANNELS?\\")
 		time.Sleep(10 * time.Millisecond)
 		r.sendCommand("~DEST?Q${NAME,CHANNELS}\\")
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		r.sendCommand("~SRC?Q${NAME,CHANNELS}\\")
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		r.sendCommand("~XPOINT?\\")
-		//time.Sleep(10 * time.Millisecond)
-		//r.sendCommand("~LOCK?\\")
+		time.Sleep(500 * time.Millisecond)
+		r.sendCommand("~LOCK?\\")
 		time.Sleep(10 * time.Second)
-		log.Infof("Harris LRC Router: Found %d levels, %d sources, %d destinations", len(r.Levels), len(r.Sources), len(r.Destinations))
+		log.Infof("Harris LRC Router: Found %d levels, %d sources, %d destinations, %d crosspoints", len(r.Levels), len(r.Sources), len(r.Destinations), len(r.Crosspoints))
 	}()
 }
 
@@ -486,6 +486,12 @@ func (r *HarrisLRCRouter) replyHandler() {
 						if len(destStrs) == 1 {
 							// Follow mode
 							followMode = true
+							var err error
+							destID, err = strconv.Atoi(destStrs[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message", msg)
+								continue
+							}
 						} else if len(destStrs) < 2 {
 							log.Errorln("Harris LRC Router: Error parsing message ", msg)
 							continue
@@ -511,9 +517,15 @@ func (r *HarrisLRCRouter) replyHandler() {
 							continue
 						}
 						srcStrs := strings.Split(arg_s.values[0], ".")
-						if len(srcStrs) == 1 && len(destStrs) == 1 {
+						if len(srcStrs) == 1 {
 							// Follow mode. All destination levels pull from source levels.
 							followMode = true
+							var err error
+							srcID, err = strconv.Atoi(srcStrs[0])
+							if err != nil {
+								log.Errorln("Harris LRC Router: Error parsing message", msg)
+								continue
+							}
 						} else if len(srcStrs) < 2 {
 							// Error occured
 							log.Errorln("Harris LRC Router: Error parsing message ", msg)
@@ -534,9 +546,9 @@ func (r *HarrisLRCRouter) replyHandler() {
 						}
 
 						r.CrosspointMutex.Lock()
-						destCrosspoints, ok := r.Crosspoints[destID]
+						destCrosspoints, destCrosspoints_ok := r.Crosspoints[destID]
 						r.CrosspointMutex.Unlock()
-						if !ok {
+						if !destCrosspoints_ok || destCrosspoints == nil {
 							destCrosspoints = make(map[int]router.Crosspoint)
 						}
 
@@ -561,13 +573,13 @@ func (r *HarrisLRCRouter) replyHandler() {
 								}
 								destCrosspoints[followDestLevelID] = lvlCrosspoint
 								if r.crosspointNotify != nil {
-									r.crosspointNotify <- lvlCrosspoint
+									//r.crosspointNotify <- lvlCrosspoint
 								}
 							}
 						} else {
 							// Breakaway mode
-							crosspoint, ok := destCrosspoints[destLvlID]
-							if !ok {
+							crosspoint, crosspoint_ok := destCrosspoints[destLvlID]
+							if !crosspoint_ok {
 								crosspoint = router.Crosspoint{
 									Destination:      destID,
 									DestinationLevel: destLvlID,
@@ -581,7 +593,7 @@ func (r *HarrisLRCRouter) replyHandler() {
 							}
 							destCrosspoints[destLvlID] = crosspoint
 							if r.crosspointNotify != nil {
-								r.crosspointNotify <- crosspoint
+								//r.crosspointNotify <- crosspoint
 							}
 						}
 						r.CrosspointMutex.Lock()
@@ -741,4 +753,25 @@ func (r *HarrisLRCRouter) UnlockDestination(destID int, destLevelID int) error {
 		cmd = fmt.Sprintf("~LOCK:D#{%d};V${OFF}\\", destID)
 	}
 	return r.sendCommand(cmd)
+}
+
+func (r *HarrisLRCRouter) GetSource(srcID int) router.Source {
+	r.SourcesMutex.Lock()
+	src := r.Sources[srcID]
+	r.SourcesMutex.Unlock()
+	return src
+}
+
+func (r *HarrisLRCRouter) GetDestination(destID int) router.Destination {
+	r.DestinationsMutex.Lock()
+	dest := r.Destinations[destID]
+	r.DestinationsMutex.Unlock()
+	return dest
+}
+
+func (r *HarrisLRCRouter) GetLevel(lvlID int) router.Level {
+	r.LevelsMutex.Lock()
+	lvl := r.Levels[lvlID]
+	r.LevelsMutex.Unlock()
+	return lvl
 }

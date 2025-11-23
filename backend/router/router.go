@@ -9,6 +9,9 @@ type Router interface {
 	SetCrosspointNotifyChannel(chan Crosspoint)
 	GetLevels() []Level
 	GetSources() []Source
+	GetSource(srcID int) Source
+	GetDestination(destID int) Destination
+	GetLevel(lvlID int) Level
 	GetDestinations() []Destination
 	GetCrosspoints() []Crosspoint
 	SetCrosspoint(destID int, destLevelID int, srcID int, srcLevelID int) error
