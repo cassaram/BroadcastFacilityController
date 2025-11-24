@@ -79,7 +79,23 @@ export class RouterTable {
       autoInsertRow: false
     },
     //selectionMode: 'range',
-    outsideClickDeselects: false,
+    outsideClickDeselects: (target: HTMLElement): boolean => {
+      console.log(target.id, target.parentElement);
+      let deselect: boolean = true;
+      if (target.hasAttribute("keepHOTSelection")) {
+        return false
+      }
+      let nextElement: HTMLElement | null = target;
+      while (true) {
+        if (nextElement === null) {
+          return true
+        }
+        if (nextElement!.hasAttribute("keepHOTSelection")) {
+          return false
+        }
+        nextElement = nextElement!.parentElement
+      }
+    },
     columns: (index: number) => {
       switch (index) {
         case 0:
