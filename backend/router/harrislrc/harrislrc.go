@@ -607,6 +607,10 @@ func (r *HarrisLRCRouter) replyHandler() {
 					arg_v, arg_v_ok := msg.args["V"]
 
 					if arg_d_ok && arg_v_ok {
+						// Cerebrum responds with both string and numeric responses. Ignore the string ones
+						if arg_d.argType != _NUMERIC {
+							continue
+						}
 						// Check if destination includes level
 						dstStrs := strings.Split(arg_d.values[0], ".")
 						if len(dstStrs) < 2 {
@@ -661,6 +665,9 @@ func (r *HarrisLRCRouter) replyHandler() {
 							crosspoint.Locked = locked
 							r.Crosspoints[destID][destLvlID] = crosspoint
 							r.CrosspointMutex.Unlock()
+							if r.CrosspointNotifyFunc != nil {
+								r.CrosspointNotifyFunc(crosspoint)
+							}
 						} else if destID != -1 && destLvlID == -1 {
 							r.CrosspointMutex.Lock()
 							destCrosspoints := r.Crosspoints[destID]
@@ -672,6 +679,11 @@ func (r *HarrisLRCRouter) replyHandler() {
 							r.CrosspointMutex.Lock()
 							r.Crosspoints[destID] = destCrosspoints
 							r.CrosspointMutex.Unlock()
+							if r.CrosspointNotifyFunc != nil {
+								for _, crosspoint := range destCrosspoints {
+									r.CrosspointNotifyFunc(crosspoint)
+								}
+							}
 						}
 					}
 				}

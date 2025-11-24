@@ -31,6 +31,7 @@ export class RouterTable {
   filterValue: string = "";
 
   private crosspointSubscription: Subscription;
+  lastSocketReceivedTime: number = 0;
 
   routers: Router[] = [];
   selectedRouter: Router = {} as Router;
@@ -49,9 +50,21 @@ export class RouterTable {
   readonly routerCrosspointRenderer = (instance: Handsontable, td: HTMLTableCellElement, row: number, col: number, prop: any, value: any, cellProperties: any) => {
     Handsontable.renderers.AutocompleteRenderer( instance, td, row, col, prop, value, cellProperties);
     let rowData = instance.getDataAtRow(row);
+    let destination_id: number = rowData[0] as number;
+    let destination_level_id: number = col-1
+    // Handle queued changes
     for (let i = 0; i < this.queuedChanges.length; i++) {
-      if (this.queuedChanges[i][0] === rowData[0] as number && this.queuedChanges[i][1] === (col-1)) {
+      if (this.queuedChanges[i][0] === destination_id as number && this.queuedChanges[i][1] === destination_level_id) {
         td.style.backgroundColor = 'green';
+      }
+    }
+    // Handle Locks
+    if (this.routerTableById.get(destination_id)!.crosspoints[destination_level_id-1].locked) {
+      if (td.style.backgroundColor == 'green') {
+        // Cell is queued for take but locked
+        td.style.borderColor = 'orangered';
+      } else {
+        td.style.backgroundColor = 'orangered';
       }
     }
   };
@@ -62,6 +75,11 @@ export class RouterTable {
     colHeaders: true,
     autoWrapRow: false,
     autoWrapCol: false,
+    fillHandle: {
+      autoInsertRow: false
+    },
+    //selectionMode: 'range',
+    outsideClickDeselects: false,
     columns: (index: number) => {
       switch (index) {
         case 0:
@@ -101,7 +119,6 @@ export class RouterTable {
       if (source === 'loadData' || changes === null) {
         return
       }
-      console.log(changes, source);
       for (let i: number = 0; i < changes!.length; i++) {
         let row = changes[i][0];
         let col: number = changes[i][1] as number;
@@ -197,10 +214,12 @@ export class RouterTable {
   }
 
   updateCrosspoint(crosspoint: RouterCrosspoint): void {
+    this.lastSocketReceivedTime = Date.now();
     // Rotuer Table by ID
     let tableLine = this.routerTableById.get(crosspoint.destination) as RouterTableLine;
     tableLine.crosspoints[crosspoint.destination_level-1].source_id = crosspoint.source;
     tableLine.crosspoints[crosspoint.destination_level-1].source_level_id = crosspoint.source_level;
+    tableLine.crosspoints[crosspoint.destination_level-1].locked = crosspoint.locked;
     tableLine.crosspoints_as_string[crosspoint.destination_level-1] = this.getCrosspointString(crosspoint.source, crosspoint.source_level);
     this.routerTableById.set(crosspoint.destination, tableLine);
     // Router table
@@ -223,8 +242,12 @@ export class RouterTable {
         this.hot_data[i].push(this.routerTable[i].crosspoints_as_string[j])
       }
     }
-    this.hotTable.hotInstance!.updateData(this.hot_data);
-    this.hotTable.hotInstance!.render();
+    setTimeout(() => {
+      if (Date.now() - this.lastSocketReceivedTime > 100) {
+        this.hotTable.hotInstance!.updateData(this.hot_data);
+        this.hotTable.hotInstance!.render();
+      }
+    }, 150);
   }
 
   getCrosspointString(source_id: number, source_level_id: number): string {
@@ -284,5 +307,31 @@ export class RouterTable {
       this.backendService.putRouterCrosspoint(this.selectedRouter.id, destination_id, destination_lvl_id, source_id, source_level_id).subscribe();
     }
     this.filterQueuedChanges();
+  }
+
+  toggleLock(): void {
+    const hot = this.hotTable?.hotInstance;
+    const selected = hot?.getSelectedRange() || [];
+
+    // Range selected
+    for (let i: number = 0; i < selected.length; i++) {
+      const row1 = selected[0].from.row;
+      const row2 = selected[0].to.row;
+      const col1 = selected[0].from.col;
+      const col2 = selected[0].to.col;
+      const rowStart = Math.max(row1, 0)
+      const colStart = Math.max(col1, 2);
+      for (let row_id: number = rowStart; row_id <= row2; row_id++) {
+        const rowData = this.hotTable.hotInstance?.getDataAtRow(row_id) || [];
+        const destination_id = rowData[0] as number || 0;
+        for (let col_id: number = colStart; col_id <= col2; col_id++) {
+          const destination_level_id = col_id-1;
+          const locked = (!this.routerTableById.get(destination_id)?.crosspoints[destination_level_id-1].locked) || false;
+          if (destination_id != 0) {
+            this.backendService.putRouterCrosspointLock(this.selectedRouter.id, destination_id, destination_level_id, locked).subscribe();
+          }
+        }  
+      }
+    }
   }
 }

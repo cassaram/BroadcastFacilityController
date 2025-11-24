@@ -85,7 +85,23 @@ export class BackendService {
             keepalive: true,
             mode: 'cors' as RequestMode
         };
-        console.log(url, body, httpOptions)
+        return this.http.put<any>(url, body, httpOptions);
+    }
+    putRouterCrosspointLock(rtr_id: number, destination_id: number, destination_level_id: number, locked: boolean): Observable<any> {
+        let url = import.meta.env.NG_APP_BACKEND_API_URL + '/api/v1/routers/'+rtr_id+'/crosspoints/lock';
+        let body = {
+            "destination_id": destination_id,
+            "destination_level_id": destination_level_id,
+            "locked": locked,
+        };
+        let httpOptions = {
+            headers: new HttpHeaders({
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+            }),
+            keepalive: true,
+            mode: 'cors' as RequestMode
+        };
         return this.http.put<any>(url, body, httpOptions);
     }
 }

@@ -64,6 +64,7 @@ func (a *APIHandler) GetServeMux() *http.ServeMux {
 	muxV1.HandleFunc("GET /routers/{router_id}/validsources", a.APIV1HandleRouterTableValidSources)
 	muxV1.HandleFunc("GET /routers/{router_id}/crosspoints", a.APIV1HandleCrosspoints)
 	muxV1.HandleFunc("PUT /routers/{router_id}/crosspoints", a.APIV1HandleCrosspointsPut)
+	muxV1.HandleFunc("PUT /routers/{router_id}/crosspoints/lock", a.APIV1HandleCrosspointsLockPut)
 	muxV1.HandleFunc("GET /routers/{router_id}/destinations", a.APIV1HandleDestinations)
 	muxV1.HandleFunc("GET /routers/{router_id}/levels", a.APIV1HandleLevels)
 	muxV1.HandleFunc("GET /routers/{router_id}/sources", a.APIV1HandleSources)
@@ -88,16 +89,18 @@ func (a *APIHandler) APIV1HandleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIHandler) APIV1SendCrosspoint(crosspoint router.Crosspoint) {
-	for i, c := range a.websocketClients {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		err := wsjson.Write(ctx, c, crosspoint)
-		if err != nil {
-			// Websocket connection probably closed
-			// Close in case its not already. We can ignore the error since if the other side closed it it doesn't matter
-			c.Close(websocket.StatusProtocolError, err.Error())
-			a.websocketClients = slices.Delete(a.websocketClients, i, i)
+	go func(crosspoint router.Crosspoint) {
+		for i, c := range a.websocketClients {
+			ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+			err := wsjson.Write(ctx, c, crosspoint)
+			if err != nil {
+				// Websocket connection probably closed
+				// Close in case its not already. We can ignore the error since if the other side closed it it doesn't matter
+				c.Close(websocket.StatusProtocolError, err.Error())
+				a.websocketClients = slices.Delete(a.websocketClients, i, i)
+			}
 		}
-	}
+	}(crosspoint)
 }
 
 func (a *APIHandler) APIV1HandleRouters(w http.ResponseWriter, r *http.Request) {
@@ -347,6 +350,40 @@ func (a *APIHandler) APIV1HandleCrosspointsPut(w http.ResponseWriter, r *http.Re
 		return
 	}
 	err = router.SetCrosspoint(destID, destLevelID, srcID, srcLevelID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *APIHandler) APIV1HandleCrosspointsLockPut(w http.ResponseWriter, r *http.Request) {
+	routerIDStr := r.PathValue("router_id")
+	routerID, err := strconv.Atoi(routerIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	router, router_ok := Routers[routerID]
+	if !router_ok {
+		http.Error(w, fmt.Sprintf("Router ID (%d) not found", routerID), http.StatusNotFound)
+		return
+	}
+	body := struct {
+		DestID    int  `json:"destination_id"`
+		DestLvlID int  `json:"destination_level_id"`
+		Locked    bool `json:"locked"`
+	}{}
+	err = json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		http.Error(w, "Error parsing body "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Locked {
+		err = router.LockDestination(body.DestID, body.DestLvlID)
+	} else if !body.Locked {
+		err = router.UnlockDestination(body.DestID, body.DestLvlID)
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
