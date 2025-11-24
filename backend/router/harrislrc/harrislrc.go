@@ -37,7 +37,7 @@ type HarrisLRCRouter struct {
 	SourcesNameMutex      sync.Mutex
 	Crosspoints           map[int]map[int]router.Crosspoint // Destination -> Level -> Crosspoint
 	CrosspointMutex       sync.Mutex
-	crosspointNotify      chan router.Crosspoint
+	CrosspointNotifyFunc  func(router.Crosspoint)
 }
 
 func (r *HarrisLRCRouter) Init(conf map[string]interface{}) {
@@ -116,8 +116,8 @@ func (r *HarrisLRCRouter) Stop() {
 	}
 }
 
-func (r *HarrisLRCRouter) SetCrosspointNotifyChannel(c chan router.Crosspoint) {
-	r.crosspointNotify = c
+func (r *HarrisLRCRouter) SetCrosspointNotifyFunc(fun func(router.Crosspoint)) {
+	r.CrosspointNotifyFunc = fun
 }
 
 func (r *HarrisLRCRouter) sendCommand(cmd string) error {
@@ -572,8 +572,8 @@ func (r *HarrisLRCRouter) replyHandler() {
 									lvlCrosspoint.SourceLevel = followDestLevelID
 								}
 								destCrosspoints[followDestLevelID] = lvlCrosspoint
-								if r.crosspointNotify != nil {
-									//r.crosspointNotify <- lvlCrosspoint
+								if r.CrosspointNotifyFunc != nil {
+									r.CrosspointNotifyFunc(lvlCrosspoint)
 								}
 							}
 						} else {
@@ -592,8 +592,8 @@ func (r *HarrisLRCRouter) replyHandler() {
 								crosspoint.SourceLevel = srcLvlID
 							}
 							destCrosspoints[destLvlID] = crosspoint
-							if r.crosspointNotify != nil {
-								//r.crosspointNotify <- crosspoint
+							if r.CrosspointNotifyFunc != nil {
+								r.CrosspointNotifyFunc(crosspoint)
 							}
 						}
 						r.CrosspointMutex.Lock()

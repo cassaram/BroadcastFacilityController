@@ -1,12 +1,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/cassaram/bfc/backend/config"
+	"github.com/cassaram/bfc/backend/router"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+	log "github.com/sirupsen/logrus"
 )
 
 type APIV1Router struct {
@@ -40,6 +47,7 @@ type APIV1RouterTableValidSources struct {
 }
 
 type APIHandler struct {
+	websocketClients []*websocket.Conn
 }
 
 func NewAPIHandler() *APIHandler {
@@ -50,14 +58,15 @@ func NewAPIHandler() *APIHandler {
 func (a *APIHandler) GetServeMux() *http.ServeMux {
 	// API V1
 	muxV1 := http.NewServeMux()
-	muxV1.HandleFunc("GET /routers", APIV1HandleRouters)
-	muxV1.HandleFunc("GET /routers/{router_id}/table", APIV1HandleRouterTable)
-	muxV1.HandleFunc("GET /routers/{router_id}/validsources", APIV1HandleRouterTableValidSources)
-	muxV1.HandleFunc("GET /routers/{router_id}/crosspoints", APIV1HandleCrosspoints)
-	muxV1.HandleFunc("PUT /routers/{router_id}/crosspoints", APIV1HandleCrosspointsPut)
-	muxV1.HandleFunc("GET /routers/{router_id}/destinations", APIV1HandleDestinations)
-	muxV1.HandleFunc("GET /routers/{router_id}/levels", APIV1HandleLevels)
-	muxV1.HandleFunc("GET /routers/{router_id}/sources", APIV1HandleSources)
+	muxV1.HandleFunc("/ws", a.APIV1HandleWS)
+	muxV1.HandleFunc("GET /routers", a.APIV1HandleRouters)
+	muxV1.HandleFunc("GET /routers/{router_id}/table", a.APIV1HandleRouterTable)
+	muxV1.HandleFunc("GET /routers/{router_id}/validsources", a.APIV1HandleRouterTableValidSources)
+	muxV1.HandleFunc("GET /routers/{router_id}/crosspoints", a.APIV1HandleCrosspoints)
+	muxV1.HandleFunc("PUT /routers/{router_id}/crosspoints", a.APIV1HandleCrosspointsPut)
+	muxV1.HandleFunc("GET /routers/{router_id}/destinations", a.APIV1HandleDestinations)
+	muxV1.HandleFunc("GET /routers/{router_id}/levels", a.APIV1HandleLevels)
+	muxV1.HandleFunc("GET /routers/{router_id}/sources", a.APIV1HandleSources)
 
 	// Full API handler
 	muxAPI := http.NewServeMux()
@@ -66,7 +75,32 @@ func (a *APIHandler) GetServeMux() *http.ServeMux {
 	return muxAPI
 }
 
-func APIV1HandleRouters(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleWS(w http.ResponseWriter, r *http.Request) {
+	options := websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	}
+	wsConn, err := websocket.Accept(w, r, &options)
+	if err != nil {
+		log.Error("API V1 Websocket Handler: ", err.Error())
+		return
+	}
+	a.websocketClients = append(a.websocketClients, wsConn)
+}
+
+func (a *APIHandler) APIV1SendCrosspoint(crosspoint router.Crosspoint) {
+	for i, c := range a.websocketClients {
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		err := wsjson.Write(ctx, c, crosspoint)
+		if err != nil {
+			// Websocket connection probably closed
+			// Close in case its not already. We can ignore the error since if the other side closed it it doesn't matter
+			c.Close(websocket.StatusProtocolError, err.Error())
+			a.websocketClients = slices.Delete(a.websocketClients, i, i)
+		}
+	}
+}
+
+func (a *APIHandler) APIV1HandleRouters(w http.ResponseWriter, r *http.Request) {
 	rtrs := make([]APIV1Router, 0)
 	for _, rtrCfg := range ConfigFile.Routers {
 		//rtr := Routers[rtrCfg.ID]
@@ -85,7 +119,7 @@ func APIV1HandleRouters(w http.ResponseWriter, r *http.Request) {
 	w.Write(rtrsBody)
 }
 
-func APIV1HandleDestinations(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleDestinations(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {
@@ -107,7 +141,7 @@ func APIV1HandleDestinations(w http.ResponseWriter, r *http.Request) {
 	w.Write(destsBody)
 }
 
-func APIV1HandleSources(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleSources(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {
@@ -129,7 +163,7 @@ func APIV1HandleSources(w http.ResponseWriter, r *http.Request) {
 	w.Write(destsBody)
 }
 
-func APIV1HandleLevels(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleLevels(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {
@@ -151,7 +185,7 @@ func APIV1HandleLevels(w http.ResponseWriter, r *http.Request) {
 	w.Write(destsBody)
 }
 
-func APIV1HandleCrosspoints(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleCrosspoints(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {
@@ -173,7 +207,7 @@ func APIV1HandleCrosspoints(w http.ResponseWriter, r *http.Request) {
 	w.Write(destsBody)
 }
 
-func APIV1HandleRouterTable(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleRouterTable(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {
@@ -218,7 +252,7 @@ func APIV1HandleRouterTable(w http.ResponseWriter, r *http.Request) {
 	w.Write(respBody)
 }
 
-func APIV1HandleRouterTableValidSources(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleRouterTableValidSources(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {
@@ -286,7 +320,7 @@ func APIV1HandleRouterTableValidSources(w http.ResponseWriter, r *http.Request) 
 	w.Write(respBody)
 }
 
-func APIV1HandleCrosspointsPut(w http.ResponseWriter, r *http.Request) {
+func (a *APIHandler) APIV1HandleCrosspointsPut(w http.ResponseWriter, r *http.Request) {
 	routerIDStr := r.PathValue("router_id")
 	routerID, err := strconv.Atoi(routerIDStr)
 	if err != nil {

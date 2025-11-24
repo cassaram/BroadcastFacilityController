@@ -14,6 +14,8 @@ import { RouterTableLine } from '../models/routertableline';
 import { RouterTableValidSources } from '../models/routertablevalidsources';
 import { autocompleteRenderer, baseRenderer, registerRenderer, textRenderer } from 'handsontable/renderers';
 import { RouterDestination } from '../models/routerDestination';
+import { RouterCrosspoint } from '../models/routerCrosspoint';
+import { Subscription } from 'rxjs';
 
 
 @Component({
@@ -28,20 +30,22 @@ export class RouterTable {
   filterFieldControl: FormControl = new FormControl('');
   filterValue: string = "";
 
+  private crosspointSubscription: Subscription;
+
   routers: Router[] = [];
+  selectedRouter: Router = {} as Router;
   routerTable: RouterTableLine[] = [];
-  routerTableById: Map<number, RouterTableLine> = new Map<number, RouterTableLine>();
-  
+  routerTableById: Map<number, RouterTableLine> = new Map<number, RouterTableLine>();  
   routerValidSources: RouterTableValidSources = {
     sources_as_string: [],
     sources: [],
   };
-  selectedRouter: Router = {} as Router;
+  queuedChanges: number[][] = [];
+
   hot_data: any[][] = [];
 
   gridSettings_colHeaders: string[] = [];
-  queuedChanges: number[][] = [];
-
+  
   readonly routerCrosspointRenderer = (instance: Handsontable, td: HTMLTableCellElement, row: number, col: number, prop: any, value: any, cellProperties: any) => {
     Handsontable.renderers.AutocompleteRenderer( instance, td, row, col, prop, value, cellProperties);
     let rowData = instance.getDataAtRow(row);
@@ -118,7 +122,13 @@ export class RouterTable {
   constructor(
     private backendService: BackendService,
     private changeDetectorRef: ChangeDetectorRef,
-  ) {}
+  ) {
+    this.crosspointSubscription = this.backendService.getWebsocketCrosspoints().subscribe(
+      (crosspoint) => {
+        this.updateCrosspoint(crosspoint);
+      }
+    );
+  }
 
   ngOnInit(): void {
     this.backendService.getRouters().subscribe(routers => this.updateRouters(routers));
@@ -132,11 +142,11 @@ export class RouterTable {
       filters.filter();
       this.hotTable.hotInstance!.render();
     });
+  }
 
-    
-
-    // Fetch router table
-    
+  ngOnDestroy(): void {
+    this.crosspointSubscription.unsubscribe();
+    this.backendService.closeWebsocketConnection();
   }
 
   updateRouters(routers: Router[]): void {
@@ -174,8 +184,6 @@ export class RouterTable {
   setDestinations(): void {
     let routerTableMapData = this.routerTable.map(line => [line.id, line] as [number, RouterTableLine]);
     this.routerTableById = new Map<number, RouterTableLine>(routerTableMapData);
-    //console.log(this.routerTable);
-    //console.log(this.gridSettings);
     for (let i = 0; i < this.routerTable.length; i++) {
       this.hot_data[i] = [
         this.routerTable[i].id,
@@ -185,8 +193,54 @@ export class RouterTable {
         this.hot_data[i].push(this.routerTable[i].crosspoints_as_string[j])
       }
     }
-    //console.log(this.hot_data)
     this.hotTable.hotInstance!.updateData(this.hot_data)
+  }
+
+  updateCrosspoint(crosspoint: RouterCrosspoint): void {
+    // Rotuer Table by ID
+    let tableLine = this.routerTableById.get(crosspoint.destination) as RouterTableLine;
+    tableLine.crosspoints[crosspoint.destination_level-1].source_id = crosspoint.source;
+    tableLine.crosspoints[crosspoint.destination_level-1].source_level_id = crosspoint.source_level;
+    tableLine.crosspoints_as_string[crosspoint.destination_level-1] = this.getCrosspointString(crosspoint.source, crosspoint.source_level);
+    this.routerTableById.set(crosspoint.destination, tableLine);
+    // Router table
+    for (let i: number = 0; i < this.routerTable.length; i++) {
+      if (this.routerTable[i].id == crosspoint.destination) {
+        this.routerTable[i] = tableLine;
+        break;
+      }
+    }
+    // Update queued changes to remove any taken routes
+    this.filterQueuedChanges();
+    // Update draw
+    this.hot_data = this.hot_data.slice(0, this.routerTable.length);
+    for (let i = 0; i < this.routerTable.length; i++) {
+      this.hot_data[i] = [
+        this.routerTable[i].id,
+        this.routerTable[i].name
+      ]
+      for (let j = 0; j < this.routerTable[i].crosspoints_as_string.length; j++) {
+        this.hot_data[i].push(this.routerTable[i].crosspoints_as_string[j])
+      }
+    }
+    this.hotTable.hotInstance!.updateData(this.hot_data);
+    this.hotTable.hotInstance!.render();
+  }
+
+  getCrosspointString(source_id: number, source_level_id: number): string {
+    let result: string = "";
+    for (let i: number = 0; i < this.selectedRouter.sources.length; i++) {
+      if (this.selectedRouter.sources[i].id == source_id) {
+        result = result + this.selectedRouter.sources[i].name;
+        break;
+      }
+    }
+    for (let i: number = 0; i < this.selectedRouter.levels.length; i++) {
+      if (this.selectedRouter.levels[i].id == source_level_id) {
+        result = result + "." + this.selectedRouter.levels[i].name
+      }
+    }
+    return result;
   }
 
   queueChange(destID: number, destLevelID: number, sourceID: number, sourceLevelID: number): void {
@@ -227,7 +281,6 @@ export class RouterTable {
       let destination_lvl_id = this.queuedChanges[i][1];
       let source_id = this.queuedChanges[i][2];
       let source_level_id = this.queuedChanges[i][3];
-      //console.log(destination_id, destination_lvl_id, source_id, source_level_id)
       this.backendService.putRouterCrosspoint(this.selectedRouter.id, destination_id, destination_lvl_id, source_id, source_level_id).subscribe();
     }
     this.filterQueuedChanges();

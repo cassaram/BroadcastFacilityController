@@ -9,18 +9,21 @@ import (
 	"github.com/cassaram/bfc/backend/config"
 	"github.com/cassaram/bfc/backend/router"
 	"github.com/cassaram/bfc/backend/router/harrislrc"
+	"github.com/coder/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
 var Routers map[int]router.Router
-var RouterCrosspointNotifcationChannels map[int]chan router.Crosspoint
 var ConfigFile config.ConfigFile
+var WebsocketConnections []*websocket.Conn
+var API APIHandler
 
 func main() {
 	log.SetOutput(os.Stdout)
+	API = *NewAPIHandler()
 
 	Routers = make(map[int]router.Router)
-	RouterCrosspointNotifcationChannels = make(map[int]chan router.Crosspoint)
+	WebsocketConnections = make([]*websocket.Conn, 0)
 
 	// Load config file
 	configFileBytes, err := os.ReadFile("config.json")
@@ -60,8 +63,7 @@ func main() {
 		default:
 			log.Fatal("Invalid router type: ", rtrCfg.Type)
 		}
-		RouterCrosspointNotifcationChannels[rtrCfg.ID] = make(chan router.Crosspoint, 32)
-		Routers[rtrCfg.ID].SetCrosspointNotifyChannel(RouterCrosspointNotifcationChannels[rtrCfg.ID])
+		Routers[rtrCfg.ID].SetCrosspointNotifyFunc(API.APIV1SendCrosspoint)
 	}
 
 	// Start Routers
@@ -75,8 +77,7 @@ func main() {
 
 func HandleHTTP() {
 	rootMux := http.NewServeMux()
-	api := NewAPIHandler()
-	apiMux := api.GetServeMux()
+	apiMux := API.GetServeMux()
 	rootMux.Handle("/api/", http.StripPrefix("/api", apiMux))
 
 	go func() {

@@ -6,7 +6,7 @@ type Router interface {
 	Stop()
 	// Channel that passes any crosspoint changes reported by the router
 	// If implemented, should be buffered to not halt internal processing of the router module
-	SetCrosspointNotifyChannel(chan Crosspoint)
+	SetCrosspointNotifyFunc(func(Crosspoint))
 	GetLevels() []Level
 	GetSources() []Source
 	GetSource(srcID int) Source

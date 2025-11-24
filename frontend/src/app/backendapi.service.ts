@@ -9,6 +9,7 @@ import { RouterLevel } from "./models/routerLevel";
 import { RouterTableLine } from "./models/routertableline";
 import { RouterTableValidSources } from "./models/routertablevalidsources";
 import { FetchBackend } from "@angular/common/http";
+import { webSocket, WebSocketSubject } from "rxjs/webSocket";
 
 const httpOptions = {
     headers: new HttpHeaders({
@@ -21,10 +22,24 @@ const httpOptions = {
   })
 export class BackendService {
     private http = inject(HttpClient);
+    private socket_crosspoints$: WebSocketSubject<RouterCrosspoint>;
     
     constructor(
         //private http: HttpClient
-    ) {}
+    ) {
+        this.socket_crosspoints$ = webSocket(import.meta.env.NG_APP_BACKEND_API_URL + '/api/v1/ws')
+    }
+
+    // Websocket API
+    getWebsocketCrosspoints(): Observable<any> {
+        return this.socket_crosspoints$.asObservable();
+    }
+
+    closeWebsocketConnection(): void {
+        this.socket_crosspoints$.complete();
+    }
+
+    // HTTP API
 
     getRouters(): Observable<Router[]> {
         return this.http.get<Router[]>(import.meta.env.NG_APP_BACKEND_API_URL + '/api/v1/routers', {responseType: 'json'});
